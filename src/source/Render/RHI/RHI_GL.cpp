@@ -211,6 +211,17 @@ void SetViewport(int x, int y, int w, int h)
     g_Height = h;
 }
 
+void SetScissorEnabled(bool enabled)
+{
+    if (enabled) glEnable(GL_SCISSOR_TEST);
+    else glDisable(GL_SCISSOR_TEST);
+}
+
+void SetScissorRect(int x, int y, int w, int h)
+{
+    glScissor(x, y, w, h);
+}
+
 void OnResize(int /*width*/, int /*height*/)
 {
     // No-op: GL never needed resize-time work (viewport is re-applied per-draw via
@@ -968,6 +979,12 @@ void SetPolygonOffset(bool enabled, float factor, float units)
     {
         glDisable(GL_POLYGON_OFFSET_FILL);
     }
+}
+
+void SetShaderProgram(ShaderProgram)
+{
+    // Shader classes continue to own their GL program binding during the staged
+    // conversion. SDL_GPU consumes this logical selection immediately.
 }
 
 // ---- Vertex layout + binding ----

@@ -20,6 +20,14 @@ enum class Backend {
     SdlGpu,
 };
 
+enum class ShaderProgram : uint8_t {
+    Passthrough,
+    Terrain,
+    BMDMesh,
+    PlanarShadow,
+    ItemSpecular,
+};
+
 Backend GetConfiguredBackend();
 const char* GetConfiguredBackendName();
 
@@ -60,6 +68,8 @@ void Shutdown();
 void BeginFrame();
 void EndFrame();                          // Present() -- wraps PlatformSwapBuffers()
 void SetViewport(int x, int y, int w, int h);
+void SetScissorEnabled(bool enabled);
+void SetScissorRect(int x, int y, int w, int h);
 void Clear(bool color, bool depth, float r = 0, float g = 0, float b = 0, float a = 1);
 // Window resize/alt-tab hook. GL is a no-op today (nothing GL-specific happens at resize
 // time); kept as a real entry point for a future backend that needs to react to it.
@@ -160,6 +170,7 @@ void SetPolygonOffset(bool enabled, float factor = -1.f, float units = -1.f); //
 // The 5 existing shader classes KEEP their bespoke Bind(...) signatures (design doc Q1,
 // decided: BMDMeshShader::Bind()'s 16-param signature stays as-is for the first RHI pass).
 // RHI owns only the GL plumbing inside each class's .cpp, not their public surface.
+void SetShaderProgram(ShaderProgram shader);
 
 // ---- Vertex layout + binding (design doc Q6, decided) ----
 // Layout is paired with "which shader consumes this" up front rather than being a

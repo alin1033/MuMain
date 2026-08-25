@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Embed two offline-compiled SPIR-V shaders in a deterministic C++ header."""
+"""Embed the SDL_GPU self-test SPIR-V in a deterministic C++ header."""
 
 import argparse
 from pathlib import Path
@@ -17,12 +17,18 @@ def format_array(name: str, data: bytes) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--vertex", type=Path, required=True)
+    parser.add_argument("--terrain-vertex", type=Path, required=True)
+    parser.add_argument("--pos-only-vertex", type=Path, required=True)
     parser.add_argument("--fragment", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     arguments = parser.parse_args()
 
     output = "#pragma once\n\nnamespace RHI_SDL_GPU_Proof_Shaders {\n\n"
     output += format_array("Vertex", arguments.vertex.read_bytes())
+    output += "\n"
+    output += format_array("TerrainVertex", arguments.terrain_vertex.read_bytes())
+    output += "\n"
+    output += format_array("PosOnlyVertex", arguments.pos_only_vertex.read_bytes())
     output += "\n"
     output += format_array("Fragment", arguments.fragment.read_bytes())
     output += "\n} // namespace RHI_SDL_GPU_Proof_Shaders\n"

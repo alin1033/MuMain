@@ -483,19 +483,28 @@ if(MU_RENDER_BACKEND STREQUAL "SDL_GPU")
   set(SDL_GPU_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source/Render/Shaders/sdl_gpu")
   set(SDL_GPU_GENERATED_DIR "${CMAKE_BINARY_DIR}/generated/Render")
   set(SDL_GPU_VERTEX_SPV "${SDL_GPU_GENERATED_DIR}/proof.vert.spv")
+  set(SDL_GPU_TERRAIN_VERTEX_SPV "${SDL_GPU_GENERATED_DIR}/terrain.vert.spv")
+  set(SDL_GPU_POS_ONLY_VERTEX_SPV "${SDL_GPU_GENERATED_DIR}/pos_only.vert.spv")
   set(SDL_GPU_FRAGMENT_SPV "${SDL_GPU_GENERATED_DIR}/proof.frag.spv")
   set(SDL_GPU_SHADER_HEADER "${SDL_GPU_GENERATED_DIR}/SdlGpuProofShaders.h")
 
   add_custom_command(
-    OUTPUT "${SDL_GPU_VERTEX_SPV}" "${SDL_GPU_FRAGMENT_SPV}"
+    OUTPUT "${SDL_GPU_VERTEX_SPV}" "${SDL_GPU_TERRAIN_VERTEX_SPV}"
+           "${SDL_GPU_POS_ONLY_VERTEX_SPV}" "${SDL_GPU_FRAGMENT_SPV}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${SDL_GPU_GENERATED_DIR}"
     COMMAND "${GLSLC_EXECUTABLE}" --target-env=vulkan1.0 -fshader-stage=vert
             "${SDL_GPU_SHADER_DIR}/proof.vert" -o "${SDL_GPU_VERTEX_SPV}"
     COMMAND "${GLSLC_EXECUTABLE}" --target-env=vulkan1.0 -fshader-stage=frag
             "${SDL_GPU_SHADER_DIR}/proof.frag" -o "${SDL_GPU_FRAGMENT_SPV}"
+    COMMAND "${GLSLC_EXECUTABLE}" --target-env=vulkan1.0 -fshader-stage=vert
+            "${SDL_GPU_SHADER_DIR}/terrain.vert" -o "${SDL_GPU_TERRAIN_VERTEX_SPV}"
+    COMMAND "${GLSLC_EXECUTABLE}" --target-env=vulkan1.0 -fshader-stage=vert
+            "${SDL_GPU_SHADER_DIR}/pos_only.vert" -o "${SDL_GPU_POS_ONLY_VERTEX_SPV}"
     DEPENDS
       "${SDL_GPU_SHADER_DIR}/proof.vert"
       "${SDL_GPU_SHADER_DIR}/proof.frag"
+      "${SDL_GPU_SHADER_DIR}/terrain.vert"
+      "${SDL_GPU_SHADER_DIR}/pos_only.vert"
     COMMENT "Compiling SDL_GPU proof shaders to SPIR-V"
     VERBATIM)
 
@@ -503,10 +512,14 @@ if(MU_RENDER_BACKEND STREQUAL "SDL_GPU")
     OUTPUT "${SDL_GPU_SHADER_HEADER}"
     COMMAND "${Python3_EXECUTABLE}" "${REPO_ROOT}/tools/embed_spirv.py"
             --vertex "${SDL_GPU_VERTEX_SPV}"
+            --terrain-vertex "${SDL_GPU_TERRAIN_VERTEX_SPV}"
+            --pos-only-vertex "${SDL_GPU_POS_ONLY_VERTEX_SPV}"
             --fragment "${SDL_GPU_FRAGMENT_SPV}"
             --output "${SDL_GPU_SHADER_HEADER}"
     DEPENDS
       "${SDL_GPU_VERTEX_SPV}"
+      "${SDL_GPU_TERRAIN_VERTEX_SPV}"
+      "${SDL_GPU_POS_ONLY_VERTEX_SPV}"
       "${SDL_GPU_FRAGMENT_SPV}"
       "${REPO_ROOT}/tools/embed_spirv.py"
     COMMENT "Embedding SDL_GPU proof SPIR-V"

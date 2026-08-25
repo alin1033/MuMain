@@ -1,8 +1,6 @@
 #version 450
 
 layout(location = 0) in vec3 a_Pos;
-layout(location = 1) in vec2 a_UV;
-layout(location = 2) in vec4 a_Color;
 
 layout(std140, set = 1, binding = 0) uniform GlobalMatrices {
     mat4 u_View;
@@ -20,6 +18,6 @@ void main()
     vec4 clip = u_MVP * vec4(a_Pos, 1.0);
     clip.y = -clip.y;
     gl_Position = clip;
-    v_UV = a_UV;
-    v_Color = a_Color;
+    v_UV = a_Pos.xy * 0.5 + 0.5;
+    v_Color = vec4(1.0);
 }
