@@ -326,6 +326,7 @@ void NewMoveLogInScene()
         CreateLogInScene();
     }
 
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     if (!CUIMng::Instance().m_CreditWin.IsShow())
     {
         InitTerrainLight();
@@ -345,6 +346,7 @@ void NewMoveLogInScene()
         MoveBoids();
         ThePetProcess().UpdatePets();
     }
+#endif
 
     // ESC menu toggle is handled by CUIMng::Update()
     if (RECEIVE_LOG_IN_SUCCESS == CurrentProtocolState)
@@ -407,6 +409,7 @@ bool NewRenderLogInScene(HDC hDC)
     // don't restrict the render loop.
     ResetFrustrumBoundsFullTerrain();
 
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     if (!CUIMng::Instance().m_CreditWin.IsShow())
     {
         RenderTerrain(false);
@@ -427,6 +430,7 @@ bool NewRenderLogInScene(HDC hDC)
     RenderSprites();
     RenderParticles();
     EndSprite();
+#endif
     BeginBitmap();
 
     if (CCameraMove::GetInstancePtr()->IsTourMode())

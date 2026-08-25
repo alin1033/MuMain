@@ -73,6 +73,9 @@ struct DeviceState {
     SDL_GPUCommandBuffer* commandBuffer = nullptr;
     SDL_GPUTexture* swapchainTexture = nullptr;
     SDL_GPURenderPass* renderPass = nullptr;
+    SDL_GPUCommandBuffer* uploadCommandBuffer = nullptr;
+    SDL_GPUCopyPass* uploadCopyPass = nullptr;
+    std::vector<SDL_GPUTransferBuffer*> pendingBufferTransfers;
 
     std::unordered_map<std::uint32_t, BufferRecord> buffers;
     std::unordered_map<std::uint32_t, TextureRecord> textures;
@@ -93,6 +96,7 @@ struct DeviceState {
     float polygonOffsetFactor = -1.0f;
     float polygonOffsetUnits = -1.0f;
     bool fogEnabled = true;
+    PassthroughState passthroughState{};
 
     SDL_GPUViewport viewport{};
     SDL_Rect scissor{};
@@ -219,6 +223,36 @@ bool SubmitBufferUpload(SDL_GPUBuffer* destination, Uint32 destinationOffset,
     }
     std::memcpy(mapped, data, size);
     SDL_UnmapGPUTransferBuffer(g.device, transfer);
+
+    // Dynamic geometry is appended while the frame's render command buffer is
+    // being recorded. Keep all of those copies in one upload command buffer,
+    // submit it once before the render buffer at EndFrame, and retain the
+    // transfer resources until that submission. The old path submitted one
+    // command buffer per UI batch (20-30 queue submissions per frame).
+    if (g.commandBuffer)
+    {
+        if (!g.uploadCommandBuffer)
+            g.uploadCommandBuffer = SDL_AcquireGPUCommandBuffer(g.device);
+        if (g.uploadCommandBuffer && !g.uploadCopyPass)
+            g.uploadCopyPass = SDL_BeginGPUCopyPass(g.uploadCommandBuffer);
+        if (!g.uploadCopyPass)
+        {
+            LogFailure("batched buffer upload copy pass");
+            if (g.uploadCommandBuffer)
+            {
+                SDL_CancelGPUCommandBuffer(g.uploadCommandBuffer);
+                g.uploadCommandBuffer = nullptr;
+            }
+            SDL_ReleaseGPUTransferBuffer(g.device, transfer);
+            return false;
+        }
+
+        const SDL_GPUTransferBufferLocation source{transfer, 0};
+        const SDL_GPUBufferRegion target{destination, destinationOffset, size};
+        SDL_UploadToGPUBuffer(g.uploadCopyPass, &source, &target, cycle);
+        g.pendingBufferTransfers.push_back(transfer);
+        return true;
+    }
 
     SDL_GPUCommandBuffer* command = SDL_AcquireGPUCommandBuffer(g.device);
     SDL_GPUCopyPass* copyPass = command ? SDL_BeginGPUCopyPass(command) : nullptr;
@@ -525,19 +559,23 @@ void PushUniforms()
     {
         SDL_PushGPUVertexUniformData(g.commandBuffer, 0,
             global->second.bytes.data(), static_cast<Uint32>(global->second.bytes.size()));
-        return;
+    }
+    else
+    {
+        // A valid std140 GlobalMatrices default: four identity matrices plus time.
+        static const std::array<float, 68> identityGlobal = [] {
+            std::array<float, 68> value{};
+            for (int matrix = 0; matrix < 4; ++matrix)
+                for (int axis = 0; axis < 4; ++axis)
+                    value[static_cast<std::size_t>(matrix * 16 + axis * 4 + axis)] = 1.0f;
+            return value;
+        }();
+        SDL_PushGPUVertexUniformData(g.commandBuffer, 0,
+            identityGlobal.data(), static_cast<Uint32>(sizeof(identityGlobal)));
     }
 
-    // A valid std140 GlobalMatrices default: four identity matrices plus time.
-    static const std::array<float, 68> identityGlobal = [] {
-        std::array<float, 68> value{};
-        for (int matrix = 0; matrix < 4; ++matrix)
-            for (int axis = 0; axis < 4; ++axis)
-                value[static_cast<std::size_t>(matrix * 16 + axis * 4 + axis)] = 1.0f;
-        return value;
-    }();
-    SDL_PushGPUVertexUniformData(g.commandBuffer, 0,
-        identityGlobal.data(), static_cast<Uint32>(sizeof(identityGlobal)));
+    SDL_PushGPUFragmentUniformData(g.commandBuffer, 0, &g.passthroughState,
+        static_cast<Uint32>(sizeof(g.passthroughState)));
 }
 
 bool BindDrawState(Topology topology)
@@ -644,7 +682,7 @@ bool Init(void* nativeWindowHandle, int width, int height)
     g.vertexShaders[2] = CreateShader(RHI_SDL_GPU_Proof_Shaders::PosOnlyVertex,
         sizeof(RHI_SDL_GPU_Proof_Shaders::PosOnlyVertex), SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
     g.fragmentShader = CreateShader(RHI_SDL_GPU_Proof_Shaders::Fragment,
-        sizeof(RHI_SDL_GPU_Proof_Shaders::Fragment), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 0);
+        sizeof(RHI_SDL_GPU_Proof_Shaders::Fragment), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
     if (!g.vertexShaders[0] || !g.vertexShaders[1] || !g.vertexShaders[2]
         || !g.fragmentShader || !CreateSamplers() || !CreateDepthTarget()
         || !CreateFallbackTexture())
@@ -670,6 +708,19 @@ void Shutdown()
 {
     if (!g.device) return;
     EndActiveRenderPass();
+    if (g.uploadCopyPass)
+    {
+        SDL_EndGPUCopyPass(g.uploadCopyPass);
+        g.uploadCopyPass = nullptr;
+    }
+    if (g.uploadCommandBuffer)
+    {
+        SDL_CancelGPUCommandBuffer(g.uploadCommandBuffer);
+        g.uploadCommandBuffer = nullptr;
+    }
+    for (SDL_GPUTransferBuffer* transfer : g.pendingBufferTransfers)
+        SDL_ReleaseGPUTransferBuffer(g.device, transfer);
+    g.pendingBufferTransfers.clear();
     if (g.commandBuffer)
     {
         SDL_CancelGPUCommandBuffer(g.commandBuffer);
@@ -723,6 +774,22 @@ void EndFrame()
     if (!g.commandBuffer) return;
     if (g.swapchainTexture && !g.renderPass) StartRenderPass();
     EndActiveRenderPass();
+
+    if (g.uploadCopyPass)
+    {
+        SDL_EndGPUCopyPass(g.uploadCopyPass);
+        g.uploadCopyPass = nullptr;
+    }
+    if (g.uploadCommandBuffer)
+    {
+        if (!SDL_SubmitGPUCommandBuffer(g.uploadCommandBuffer))
+            LogFailure("batched buffer upload submission");
+        g.uploadCommandBuffer = nullptr;
+    }
+    for (SDL_GPUTransferBuffer* transfer : g.pendingBufferTransfers)
+        SDL_ReleaseGPUTransferBuffer(g.device, transfer);
+    g.pendingBufferTransfers.clear();
+
     if (!SDL_SubmitGPUCommandBuffer(g.commandBuffer))
         LogFailure("command-buffer submission");
     g.commandBuffer = nullptr;
@@ -948,6 +1015,7 @@ void SetPolygonOffset(bool enabled, float factor, float units)
 }
 
 void SetShaderProgram(ShaderProgram shader) { g.shader = shader; }
+void SetPassthroughState(const PassthroughState& state) { g.passthroughState = state; }
 
 void BindVertexBuffer(BufferHandle handle, VertexLayout layout)
 {

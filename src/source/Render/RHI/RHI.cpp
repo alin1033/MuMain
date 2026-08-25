@@ -48,6 +48,7 @@ namespace RHI_GL_Impl {
     void SetFogEnabled(bool enabled);
     void SetPolygonOffset(bool enabled, float factor, float units);
     void SetShaderProgram(RHI::ShaderProgram shader);
+    void SetPassthroughState(const RHI::PassthroughState& state);
 
     void BindVertexBuffer(RHI::BufferHandle handle, RHI::VertexLayout layout);
     void BindIndexBuffer(RHI::BufferHandle handle);
@@ -242,6 +243,11 @@ void SetPolygonOffset(bool enabled, float factor, float units)
 void SetShaderProgram(ShaderProgram shader)
 {
     RHI_BACKEND::SetShaderProgram(shader);
+}
+
+void SetPassthroughState(const PassthroughState& state)
+{
+    RHI_BACKEND::SetPassthroughState(state);
 }
 
 void BindVertexBuffer(BufferHandle handle, VertexLayout layout)

@@ -42,6 +42,7 @@ private:
     void CreateGL();
     void DestroyGL();
     void BindGL();
+    void PushRHIState();
 
     // ---- GL state ----
     GLuint m_Program = 0;

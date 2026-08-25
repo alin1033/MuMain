@@ -355,11 +355,13 @@ static void RenderSelectedCharacterEffects()
  */
 static void RenderCharacterSceneUI()
 {
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     BeginSprite();
     RenderSprites();
     RenderParticles();
     RenderPoints();
     EndSprite();
+#endif
 
     BeginBitmap();
     RenderInfomation();
@@ -400,9 +402,11 @@ bool NewRenderCharacterScene(HDC hDC)
 
     int width, height;
     SetupCharacterSceneViewport(width, height);
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     ApplySelectedCharacterLighting();
     RenderCharacterScene3D();
     RenderSelectedCharacterEffects();
+#endif
 
 #ifdef _EDITOR
     if (CameraManager::Instance().GetCurrentMode() == CameraMode::FreeFly)

@@ -987,6 +987,11 @@ void SetShaderProgram(ShaderProgram)
     // conversion. SDL_GPU consumes this logical selection immediately.
 }
 
+void SetPassthroughState(const PassthroughState&)
+{
+    // The GL passthrough class owns these legacy uniforms directly.
+}
+
 // ---- Vertex layout + binding ----
 typedef void (APIENTRY* PFNGLGENVERTEXARRAYSPROC)(GLsizei n, GLuint* arrays);
 typedef void (APIENTRY* PFNGLDELETEVERTEXARRAYSPROC)(GLsizei n, const GLuint* arrays);

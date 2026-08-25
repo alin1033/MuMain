@@ -48,7 +48,7 @@ void CameraProjection::SetViewport(int x, int y, int width, int height)
     // GL's viewport origin is bottom-left, so glViewport needs y flipped to
     // WindowHeight-(y+height).
     const int flippedY = WindowHeight - (y + height);
-    glViewport(x, flippedY, width, height);
+    RHI::SetViewport(x, flippedY, width, height);
 }
 
 void CameraProjection::ScreenToWorldRay(const CameraState& state, int sx, int sy,

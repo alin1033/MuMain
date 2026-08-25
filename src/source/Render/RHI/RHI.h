@@ -172,6 +172,17 @@ void SetPolygonOffset(bool enabled, float factor = -1.f, float units = -1.f); //
 // RHI owns only the GL plumbing inside each class's .cpp, not their public surface.
 void SetShaderProgram(ShaderProgram shader);
 
+// Small per-draw state block consumed by the passthrough fragment shader. The GL
+// implementation keeps using the shader class' existing uniforms; SDL_GPU pushes
+// this POD block as fragment uniform slot 0 immediately before a draw.
+struct PassthroughState {
+    uint32_t useTexture = 1;
+    uint32_t useFog = 0;
+    float alphaRef = -1.0f;
+    uint32_t texCombineAdd = 0;
+};
+void SetPassthroughState(const PassthroughState& state);
+
 // ---- Vertex layout + binding (design doc Q6, decided) ----
 // Layout is paired with "which shader consumes this" up front rather than being a
 // free-floating buffer property. Exactly 4 concrete layouts exist in the tree today.

@@ -17,9 +17,7 @@ layout(location = 1) out vec4 v_Color;
 
 void main()
 {
-    vec4 clip = u_MVP * vec4(a_Pos, 1.0);
-    clip.y = -clip.y;
-    gl_Position = clip;
+    gl_Position = u_MVP * vec4(a_Pos, 1.0);
     v_UV = a_UV;
     v_Color = a_Color;
 }

@@ -6,6 +6,7 @@
 #include "Render/Core/ImmediateRenderer.h" // GLP-19 -- IR::Flush() on real state change
 #include "Core/Utilities/FrameProfiler.h"
 #include "Core/Utilities/Log/ErrorReport.h"
+#include "Render/RHI/RHI.h"
 #include <SDL3/SDL.h>
 #include <cstdint>
 #include <cstring>
@@ -191,22 +192,61 @@ PassthroughShader::~PassthroughShader()
 
 void PassthroughShader::Create()
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    // Preserve IsCreated() semantics without creating a GL object. Shader modules
+    // and immutable pipelines are owned by the SDL_GPU RHI.
+    m_Program = 1;
+    m_LastUseTexture = 1;
+    m_LastUseFog = 0;
+    m_LastTexCombineAdd = 0;
+    m_LastAlphaRef = -1.0f;
+    PushRHIState();
+#else
     CreateGL();
+#endif
 }
 
 void PassthroughShader::Destroy()
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    m_Program = 0;
+#else
     DestroyGL();
+#endif
 }
 
 void PassthroughShader::Bind()
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::SetShaderProgram(RHI::ShaderProgram::Passthrough);
+    if (g_AlphaRef != m_LastAlphaRef)
+    {
+        IR::Flush(IR::FlushCause::Uniform);
+        m_LastAlphaRef = g_AlphaRef;
+    }
+    PushRHIState();
+#else
     BindGL();
+#endif
 }
 
 void PassthroughShader::Unbind()
 {
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     BindProgram(0);
+#endif
+}
+
+void PassthroughShader::PushRHIState()
+{
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::SetPassthroughState({
+        static_cast<uint32_t>(m_LastUseTexture > 0),
+        static_cast<uint32_t>(m_LastUseFog > 0),
+        m_LastAlphaRef,
+        static_cast<uint32_t>(m_LastTexCombineAdd > 0),
+    });
+#endif
 }
 
 void PassthroughShader::CreateGL()
@@ -347,6 +387,16 @@ void PassthroughShader::SetTexture(GLuint texID, int slot)
 
 void PassthroughShader::SetUseTexture(bool use)
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    Bind();
+    const int v = use ? 1 : 0;
+    if (v != m_LastUseTexture)
+    {
+        IR::Flush(IR::FlushCause::Uniform);
+        m_LastUseTexture = v;
+        PushRHIState();
+    }
+#else
     Bind();
     const int v = use ? 1 : 0;
     if (m_LocUseTexture != -1 && fn_glUniform1i != nullptr && v != m_LastUseTexture) {
@@ -358,10 +408,21 @@ void PassthroughShader::SetUseTexture(bool use)
         FrameProfiler::CountGLCall(FrameProfiler::Counter::UniformWrites);
         m_LastUseTexture = v;
     }
+#endif
 }
 
 void PassthroughShader::SetUseFog(bool use)
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    Bind();
+    const int v = use ? 1 : 0;
+    if (v != m_LastUseFog)
+    {
+        IR::Flush(IR::FlushCause::Uniform);
+        m_LastUseFog = v;
+        PushRHIState();
+    }
+#else
     Bind();
     const int v = use ? 1 : 0;
     if (m_LocUseFog != -1 && fn_glUniform1i != nullptr && v != m_LastUseFog) {
@@ -370,10 +431,21 @@ void PassthroughShader::SetUseFog(bool use)
         FrameProfiler::CountGLCall(FrameProfiler::Counter::UniformWrites);
         m_LastUseFog = v;
     }
+#endif
 }
 
 void PassthroughShader::SetTexCombineAdd(bool add)
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    Bind();
+    const int v = add ? 1 : 0;
+    if (v != m_LastTexCombineAdd)
+    {
+        IR::Flush(IR::FlushCause::Uniform);
+        m_LastTexCombineAdd = v;
+        PushRHIState();
+    }
+#else
     Bind();
     const int v = add ? 1 : 0;
     if (m_LocTexCombineAdd != -1 && fn_glUniform1i != nullptr && v != m_LastTexCombineAdd) {
@@ -381,4 +453,5 @@ void PassthroughShader::SetTexCombineAdd(bool add)
         FrameProfiler::CountGLCall(FrameProfiler::Counter::UniformWrites);
         m_LastTexCombineAdd = v;
     }
+#endif
 }

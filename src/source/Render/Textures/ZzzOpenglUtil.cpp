@@ -26,6 +26,7 @@
 #include "Render/Core/ImmediateRenderer.h"
 #include "Render/Core/BindState.h"
 #include "Render/Shaders/PassthroughShader.h"
+#include "Render/RHI/RHI.h"
 #include "Core/Utilities/Log/ErrorReport.h"
 
 #ifdef _EDITOR
@@ -234,30 +235,68 @@ void DisableAlphaTestRaw() { if (!g_CoreProfile) glDisable(GL_ALPHA_TEST); }
 // effect from that call under Core Profile anyway (no FFP fog machinery exists to enable).
 void EnableFog()  { if (!g_CoreProfile) glEnable(GL_FOG); }
 void DisableFog() { if (!g_CoreProfile) glDisable(GL_FOG); }
-void EnableBlend()  { glEnable(GL_BLEND); }
-void DisableBlend() { glDisable(GL_BLEND); }
-void SetBlendFuncAlpha() { glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); }
-void SetDepthFuncLEqual() { glDepthFunc(GL_LEQUAL); }
+void EnableBlend()  {
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
+    glEnable(GL_BLEND);
+#endif
+}
+void DisableBlend() {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::SetBlendMode(RHI::BlendMode::Opaque);
+#else
+    glDisable(GL_BLEND);
+#endif
+}
+void SetBlendFuncAlpha() {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::SetBlendMode(RHI::BlendMode::Blend3);
+#else
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
+}
+void SetDepthFuncLEqual() {
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
+    glDepthFunc(GL_LEQUAL);
+#endif
+}
 
 namespace { float g_ClearColor[4] = { 0.f, 0.f, 0.f, 1.f }; }
 void ClearColorBuffer()
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::Clear(true, false, g_ClearColor[0], g_ClearColor[1], g_ClearColor[2], g_ClearColor[3]);
+#else
     glClear(GL_COLOR_BUFFER_BIT);
+#endif
 }
 void ClearDepthBuffer()
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::Clear(false, true);
+#else
     glClear(GL_DEPTH_BUFFER_BIT);
+#endif
 }
 void ClearColorAndDepthBuffers()
 {
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::Clear(true, true, g_ClearColor[0], g_ClearColor[1], g_ClearColor[2], g_ClearColor[3]);
+#else
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#endif
 }
 void SetClearColor(float r, float g, float b, float a)
 {
     g_ClearColor[0] = r; g_ClearColor[1] = g; g_ClearColor[2] = b; g_ClearColor[3] = a;
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     glClearColor(r, g, b, a);
+#endif
 }
-void FlushGL() { glFlush(); }
+void FlushGL() {
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
+    glFlush();
+#endif
+}
 
 void EnableDepthTest()
 {
@@ -265,7 +304,11 @@ void EnableDepthTest()
     {
         IR::Flush(IR::FlushCause::Depth); // GLP-19 -- depth state is batch state; flush before it changes
         DepthTestEnable = true;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetDepthTestEnabled(true);
+#else
         glEnable(GL_DEPTH_TEST);
+#endif
     }
 }
 
@@ -275,7 +318,11 @@ void DisableDepthTest()
     {
         IR::Flush(IR::FlushCause::Depth); // GLP-19 -- see EnableDepthTest
         DepthTestEnable = false;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetDepthTestEnabled(false);
+#else
         glDisable(GL_DEPTH_TEST);
+#endif
     }
 }
 
@@ -285,7 +332,11 @@ void EnableDepthMask()
     {
         IR::Flush(IR::FlushCause::Depth); // GLP-19 -- see EnableDepthTest
         DepthMaskEnable = true;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetDepthWriteEnabled(true);
+#else
         glDepthMask(true);
+#endif
     }
 }
 
@@ -295,7 +346,11 @@ void DisableDepthMask()
     {
         IR::Flush(IR::FlushCause::Depth); // GLP-19 -- see EnableDepthTest
         DepthMaskEnable = false;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetDepthWriteEnabled(false);
+#else
         glDepthMask(false);
+#endif
     }
 }
 
@@ -305,7 +360,11 @@ void EnableCullFace()
     {
         IR::Flush(IR::FlushCause::Depth); // GLP-19 -- see EnableDepthTest
         CullFaceEnable = true;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetCullEnabled(true);
+#else
         glEnable(GL_CULL_FACE);
+#endif
     }
 }
 
@@ -315,7 +374,11 @@ void DisableCullFace()
     {
         IR::Flush(IR::FlushCause::Depth); // GLP-19 -- see EnableDepthTest
         CullFaceEnable = false;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetCullEnabled(false);
+#else
         glDisable(GL_CULL_FACE);
+#endif
     }
 }
 
@@ -354,7 +417,11 @@ void DisableAlphaBlend()
     {
         IR::Flush(IR::FlushCause::Blend); // GLP-19 -- blend func is batch state; flush BEFORE it changes
         AlphaBlendType = 0;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetBlendMode(RHI::BlendMode::Opaque);
+#else
         glDisable(GL_BLEND);
+#endif
     }
     EnableCullFace();
     EnableDepthMask();
@@ -381,8 +448,12 @@ void EnableAlphaTest(bool DepthMask)
     {
         IR::Flush(IR::FlushCause::Blend); // GLP-19 -- see AlphaBlendType 0
         AlphaBlendType = 2;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetBlendMode(RHI::BlendMode::AlphaTest);
+#else
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
     }
     DisableCullFace();
     if (DepthMask)
@@ -410,8 +481,12 @@ void EnableAlphaBlend()
     {
         IR::Flush(IR::FlushCause::Blend); // GLP-19 -- see AlphaBlendType 0
         AlphaBlendType = 3;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetBlendMode(RHI::BlendMode::Additive);
+#else
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE);
+#endif
     }
     DisableCullFace();
     DisableDepthMask();
@@ -439,8 +514,12 @@ void EnableAlphaBlendMinus()
         IR::Flush(IR::FlushCause::Blend); // GLP-19 -- subtractive blend (ZERO, ONE_MINUS_SRC_COLOR); a batch leaking
                       // into this is exactly the black-polygon artifact
         AlphaBlendType = 4;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetBlendMode(RHI::BlendMode::Minus);
+#else
         glEnable(GL_BLEND);
         glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
+#endif
     }
     DisableCullFace();
     DisableDepthMask();
@@ -467,8 +546,12 @@ void EnableAlphaBlend2()
     {
         IR::Flush(IR::FlushCause::Blend); // GLP-19 -- see AlphaBlendType 0
         AlphaBlendType = 5;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetBlendMode(RHI::BlendMode::Blend2);
+#else
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE_MINUS_SRC_COLOR, GL_ONE);
+#endif
     }
     DisableCullFace();
     DisableDepthMask();
@@ -495,8 +578,12 @@ void EnableAlphaBlend3()
     {
         IR::Flush(IR::FlushCause::Blend); // GLP-19 -- see AlphaBlendType 0
         AlphaBlendType = 6;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetBlendMode(RHI::BlendMode::Blend3);
+#else
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
     }
     DisableCullFace();
     DisableDepthMask();
@@ -523,8 +610,12 @@ void EnableAlphaBlend4()
     {
         IR::Flush(IR::FlushCause::Blend); // GLP-19 -- see AlphaBlendType 0
         AlphaBlendType = 7;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetBlendMode(RHI::BlendMode::Blend4);
+#else
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+#endif
     }
     DisableCullFace();
     DisableDepthMask();
@@ -551,8 +642,12 @@ void EnableLightMap()
     {
         IR::Flush(IR::FlushCause::Blend); // GLP-19 -- see AlphaBlendType 0
         AlphaBlendType = 1;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::SetBlendMode(RHI::BlendMode::LightMap);
+#else
         glEnable(GL_BLEND);
         glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+#endif
     }
     EnableCullFace();
     EnableDepthMask();
@@ -750,10 +845,17 @@ void BeginOpengl(int x, int y, int Width, int Height)
     // every draw this frame until something happens to force it back -- surfaced as back-facing/
     // "underground" geometry bleeding through on the next frame's opaque meshes.
     if (!g_CoreProfile) { glDisable(GL_ALPHA_TEST); glEnable(GL_TEXTURE_2D); }
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::SetDepthTestEnabled(true);
+    RHI::SetCullEnabled(true);
+    RHI::SetDepthWriteEnabled(true);
+    RHI::SetBlendMode(RHI::BlendMode::Opaque);
+#else
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glDepthMask(true);
     glDepthFunc(GL_LEQUAL);
+#endif
     AlphaTestEnable = false;
     g_AlphaRef = -1.0f; // per-frame reset must clear the shader ref too, or draws before the first EnableAlphaTest() this frame inherit last frame's discard threshold
     TextureEnable = true;
@@ -1312,7 +1414,7 @@ void BeginBitmap()
     // UI bitmaps use ConvertX/Y to scale from 640×480 reference,
     // so we need the full window size here (not the game viewport which may be smaller)
     //
-    glViewport(0, 0, WindowWidth, WindowHeight);
+    RHI::SetViewport(0, 0, WindowWidth, WindowHeight);
     DisableDepthTest();
 
     // DXP-16: tried an explicit EnableAlphaTest() here to give the whole 2D pass a known blend

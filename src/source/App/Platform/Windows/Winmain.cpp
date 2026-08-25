@@ -276,6 +276,10 @@ void PlatformSwapBuffers()
         // swap path in the tree funnels through here (SceneManager, LoadingScene, UIMng), which
         // makes this the one place that cannot be missed.
         IR::Flush();
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+        RHI::EndFrame();
+        return;
+#endif
 #ifdef __ANDROID__
         // AH-1118: alarm on pathological presents -- measures the SwapWindow
         // block that the off-CPU profile could not attribute.
@@ -1257,26 +1261,15 @@ MSG MainLoop()
         // focus, so SDL only emits SDL_EVENT_TEXT_INPUT while one is active (#447).
         {
             static bool s_textInputActive = false;
+            static CUITextInputBox* s_textInputField = nullptr;
+            static SDL_Rect s_lastArea = { 0, 0, 0, 0 };
             auto* focusedField = CUITextInputBox::GetFocusedPortable();
             const bool wantTextInput = focusedField != nullptr;
-            if (wantTextInput != s_textInputActive && g_sdlWindow != nullptr)
-            {
-                if (wantTextInput)
-                    SDL_StartTextInput(g_sdlWindow);
-                else
-                    SDL_StopTextInput(g_sdlWindow);
-                s_textInputActive = wantTextInput;
-#ifdef __ANDROID__
-                __android_log_print(ANDROID_LOG_INFO, "MuMainInput",
-                    "text input %s (focused=%p, started=%d, kbdShown=%d)",
-                    wantTextInput ? "START" : "STOP", (void*)focusedField,
-                    (int)SDL_TextInputActive(g_sdlWindow),
-                    (int)SDL_ScreenKeyboardShown(g_sdlWindow));
-#endif
-            }
 
             // Anchor the IME candidate window at the caret (reference px -> window
             // px) so composition UI appears next to the text being typed (#447).
+            // Android consumes this rectangle while StartTextInput creates its
+            // hidden edit control, so publish it before starting the IME.
             int cx, cy, cw, ch;
             if (wantTextInput && g_sdlWindow != nullptr && focusedField->GetCaretArea(cx, cy, cw, ch))
             {
@@ -1287,13 +1280,31 @@ MSG MainLoop()
                     static_cast<int>(ch * g_fScreenRate_y) };
                 // Only push when the caret rect actually moves; resending every
                 // frame is wasteful and can flicker the candidate window.
-                static SDL_Rect s_lastArea = { 0, 0, 0, 0 };
                 if (area.x != s_lastArea.x || area.y != s_lastArea.y ||
                     area.w != s_lastArea.w || area.h != s_lastArea.h)
                 {
                     SDL_SetTextInputArea(g_sdlWindow, &area, 0);
                     s_lastArea = area;
                 }
+            }
+
+            const bool fieldChanged = focusedField != s_textInputField;
+            if ((wantTextInput != s_textInputActive || (wantTextInput && fieldChanged)) &&
+                g_sdlWindow != nullptr)
+            {
+                if (s_textInputActive)
+                    SDL_StopTextInput(g_sdlWindow);
+                if (wantTextInput)
+                    SDL_StartTextInput(g_sdlWindow);
+                s_textInputActive = wantTextInput;
+                s_textInputField = focusedField;
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO, "MuMainInput",
+                    "text input %s (focused=%p, started=%d, kbdShown=%d)",
+                    wantTextInput ? (fieldChanged ? "START/RESTART" : "START") : "STOP",
+                    (void*)focusedField, (int)SDL_TextInputActive(g_sdlWindow),
+                    (int)SDL_ScreenKeyboardShown(g_sdlWindow));
+#endif
             }
         }
 
@@ -1760,7 +1771,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int nC
     if (g_bUseWindowMode != TRUE)
         gpuWindowFlags |= SDL_WINDOW_FULLSCREEN;
 
-    g_sdlWindow = SDL_CreateWindow("MU Online — SDL_GPU Vulkan proof",
+    g_sdlWindow = SDL_CreateWindow("MU Online",
         static_cast<int>(WindowWidth), static_cast<int>(WindowHeight), gpuWindowFlags);
     if (!g_sdlWindow)
     {
@@ -1771,13 +1782,25 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int nC
         return 0;
     }
 
-    g_ErrorReport.Write(L"> Starting SDL_GPU Vulkan textured-quad proof.\r\n");
-    const bool proofSucceeded = RHI::RunSdlGpuProof(g_sdlWindow);
-    SDL_DestroyWindow(g_sdlWindow);
-    g_sdlWindow = nullptr;
-    SDL_QuitSubSystem(SDL_INIT_VIDEO);
-    return proofSucceeded ? 0 : 1;
-#endif
+    g_CoreProfile = TRUE;
+    int drawW = 0;
+    int drawH = 0;
+    SDL_GetWindowSizeInPixels(g_sdlWindow, &drawW, &drawH);
+    if (drawW > 0 && drawH > 0)
+    {
+        WindowWidth = static_cast<unsigned int>(drawW);
+        WindowHeight = static_cast<unsigned int>(drawH);
+    }
+    OpenglWindowWidth = WindowWidth;
+    OpenglWindowHeight = WindowHeight;
+    if (!RHI::Init(g_sdlWindow, static_cast<int>(WindowWidth), static_cast<int>(WindowHeight)))
+    {
+        g_ErrorReport.Write(L"> SDL_GPU RHI initialization failed: %hs.\r\n", SDL_GetError());
+        KillGLWindow();
+        return FALSE;
+    }
+    g_ErrorReport.Write(L"> SDL_GPU/Vulkan init success.\r\n");
+#else
 
     // DXP-08 Stage G: g_CoreProfile (config.ini [Render] CoreProfile, default 1 as of
     // Stage G) selects the context profile. Core became the default after the DXP-08a/
@@ -1952,15 +1975,20 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int nC
         }
     }
 #endif // defined(_DEBUG) && ENABLE_GL_KHR_DEBUG_CALLBACK
+#endif // MU_RENDER_BACKEND_SDL_GPU
 
     // Initialize single-pass GLSL engines (Item Specular & Planar Ground Shadows)
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     CItemSpecularShader::Instance().Init();
     CPlanarShadowShader::Instance().Init();
+#endif
     GlobalUBO::Instance().Create();
     SceneUBO::Instance().Create();
     PassthroughShader::Instance().Create();
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     BMDMeshShader::Instance().Create();
     TerrainShader::Instance().Create();
+#endif
     IR::Create();
 
 #ifdef _WIN32
@@ -1985,9 +2013,11 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int nC
     MuApplyCursorVisibility();
 #endif
 
-    g_ErrorReport.Write(L"> OpenGL init success.\r\n");
+    g_ErrorReport.Write(L"> Renderer init success.\r\n");
     g_ErrorReport.AddSeparator();
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     g_ErrorReport.WriteOpenGLInfo();
+#endif
     g_ErrorReport.AddSeparator();
     g_ErrorReport.WriteSoundCardInfo();
 

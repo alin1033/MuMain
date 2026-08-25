@@ -1,12 +1,16 @@
 package com.alin.mumain;
 
+import android.content.Context;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -48,6 +52,49 @@ public final class MuMainActivity extends SDLActivity {
         logBaseOffset = log.exists() ? log.length() : 0;
         createLoadingOverlay();
         handler.postDelayed(this::pollBootLog, UPDATE_INTERVAL_MS);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        boolean handled = super.dispatchTouchEvent(event);
+        if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+            // SDL creates and focuses its hidden edit control from the native
+            // loop after the tap has been delivered. Samsung HoneyBoard can
+            // ignore SDL's first immediate show request, so retry after that
+            // focus handoff has reached the Android UI thread.
+            final float touchX = event.getX();
+            final float touchY = event.getY();
+            handler.postDelayed(() -> ensureSdlKeyboardVisible(touchX, touchY), 150);
+        }
+        return handled;
+    }
+
+    private void ensureSdlKeyboardVisible(float touchX, float touchY) {
+        View focused = getCurrentFocus();
+        if (focused == null
+                || !"org.libsdl.app.SDLDummyEdit".equals(focused.getClass().getName())) {
+            return;
+        }
+
+        // A login field is focused briefly while the server picker is being
+        // created. Do not let an unrelated server/menu tap summon the IME;
+        // retry only when the release landed near SDL's published caret area.
+        final int horizontalSlop = 96;
+        final int verticalSlop = 48;
+        if (touchX < focused.getLeft() - horizontalSlop
+                || touchX > focused.getRight() + horizontalSlop
+                || touchY < focused.getTop() - verticalSlop
+                || touchY > focused.getBottom() + verticalSlop) {
+            return;
+        }
+
+        InputMethodManager input =
+                (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        focused.setFocusableInTouchMode(true);
+        focused.requestFocus();
+        input.restartInput(focused);
+        boolean requested = input.showSoftInput(focused, InputMethodManager.SHOW_IMPLICIT);
+        android.util.Log.i("MuMainInput", "HoneyBoard retry requested=" + requested);
     }
 
     private void applyRenderScale() {

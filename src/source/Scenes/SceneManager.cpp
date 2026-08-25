@@ -432,7 +432,9 @@ static bool RenderCurrentScene(HDC hDC)
         Success = RenderMainScene();
     }
 
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     g_PhysicsManager.Render();
+#endif
     return Success;
 }
 

@@ -2,6 +2,7 @@
 #include "BindState.h"
 #include "Render/Core/ImmediateRenderer.h" // GLP-19 -- IR::Flush() before any bind changes
 #include "Core/Utilities/FrameProfiler.h"
+#include "Render/RHI/RHI.h"
 #include <SDL3/SDL.h>
 
 #ifndef APIENTRY
@@ -67,11 +68,17 @@ static GLint s_lastActiveSlot = 0;
 void BindProgram(GLuint program)
 {
     if (program == s_lastProgram) return;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    IR::Flush(IR::FlushCause::Program);
+    s_lastProgram = program;
+    FrameProfiler::CountSkip(FrameProfiler::Counter::ProgramBinds);
+#else
     if (!LoadBindStateFunctions()) return;
     IR::Flush(IR::FlushCause::Program);
     fn_glUseProgram(program);
     s_lastProgram = program;
     FrameProfiler::CountGLCall(FrameProfiler::Counter::ProgramBinds);
+#endif
 }
 
 void UnbindAllShaders()
@@ -81,7 +88,9 @@ void UnbindAllShaders()
 
 void BindTexture2D(int slot, GLuint texture)
 {
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
     if (!LoadBindStateFunctions()) return;
+#endif
 
     // GLP-19 -- see BindProgram(). Computed up front because the real texture comparison below
     // sits after the active-slot switch, and both change what a pending IR batch would sample.
@@ -100,24 +109,39 @@ void BindTexture2D(int slot, GLuint texture)
     // "infinity shadow" for what that class of bug looks like in practice). If you are adding a
     // texture bind anywhere, route it through BindTexture2D -- do not call glActiveTexture directly.
     if (slot != s_lastActiveSlot) {
+#if !defined(MU_RENDER_BACKEND_SDL_GPU)
         fn_glActiveTexture(GL_TEXTURE0 + slot);
+#endif
         s_lastActiveSlot = slot;
     }
 
     if (slot >= 0 && slot < kMaxCachedTextureSlots && s_lastTexture[slot] == texture) return;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    RHI::BindTexture(RHI::TextureHandle{texture}, slot);
+#else
     glBindTexture(GL_TEXTURE_2D, texture);
+#endif
     if (slot >= 0 && slot < kMaxCachedTextureSlots) s_lastTexture[slot] = texture;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    FrameProfiler::CountSkip(FrameProfiler::Counter::TextureBinds);
+#else
     FrameProfiler::CountGLCall(FrameProfiler::Counter::TextureBinds);
+#endif
 }
 
 void BindVAO(GLuint vao)
 {
     if (vao == s_lastVAO) return;
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    IR::Flush(IR::FlushCause::Other);
+    s_lastVAO = vao;
+#else
     if (!LoadBindStateFunctions()) return;
     IR::Flush(IR::FlushCause::Other); // GLP-19 -- see BindProgram(); safe to re-enter, Flush() clears its flag first
     fn_glBindVertexArray(vao);
     s_lastVAO = vao;
     FrameProfiler::CountGLCall();
+#endif
 }
 
 // Sentinel that can never be a real GL object name (0 is reserved for "no object"; real generated
