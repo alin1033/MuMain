@@ -55,6 +55,8 @@ Backend GetConfiguredBackend()
 {
 #if defined(MU_RENDER_BACKEND_OPENGL)
     return Backend::OpenGL;
+#elif defined(MU_RENDER_BACKEND_SDL_GPU)
+    return Backend::SdlGpu;
 #else
 #error "No MuMain renderer backend was selected by CMake."
 #endif

@@ -89,10 +89,6 @@ if(NOT MU_RENDER_BACKEND STREQUAL "OpenGL" AND
   message(FATAL_ERROR "Unknown MU_RENDER_BACKEND='${MU_RENDER_BACKEND}'. "
     "Choose OpenGL or SDL_GPU.")
 endif()
-if(MU_RENDER_BACKEND STREQUAL "SDL_GPU")
-  message(FATAL_ERROR "MU_RENDER_BACKEND=SDL_GPU is reserved for the Vulkan "
-    "backend landing in AH-1308; use OpenGL for the reproducible baseline.")
-endif()
 message(STATUS "MuMain renderer backend: ${MU_RENDER_BACKEND}")
 
 # ---------------------------------------------------------------------------
@@ -188,7 +184,10 @@ endif()
 # links MuClient inherit them automatically.
 add_library(MuClient STATIC ${MU_CLIENT_SOURCES})
 target_compile_features(MuClient PUBLIC cxx_std_20)
-target_compile_definitions(MuClient PUBLIC MU_RENDER_BACKEND_OPENGL=1)
+target_compile_definitions(MuClient PUBLIC
+  $<$<STREQUAL:${MU_RENDER_BACKEND},OpenGL>:MU_RENDER_BACKEND_OPENGL=1>
+  $<$<STREQUAL:${MU_RENDER_BACKEND},SDL_GPU>:MU_RENDER_BACKEND_SDL_GPU=1>
+)
 
 # The in-game shop downloader uses libcurl off Windows (issue #462); on Windows
 # it uses the OS WinINet/urlmon stack and needs no extra dependency here.
@@ -473,6 +472,50 @@ endif()
 set(WIRE_SIZES_GEN_SCRIPT "${REPO_ROOT}/tools/gen_wire_sizes.py")
 set(WIRE_SIZES_GEN_HEADER "${CMAKE_BINARY_DIR}/generated/Network/Server/wire_sizes.generated.h")
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+if(MU_RENDER_BACKEND STREQUAL "SDL_GPU")
+  find_program(GLSLC_EXECUTABLE glslc
+    HINTS
+      "$ENV{ANDROID_NDK_ROOT}/shader-tools/linux-x86_64"
+      "$ENV{ANDROID_NDK_HOME}/shader-tools/linux-x86_64"
+    REQUIRED)
+
+  set(SDL_GPU_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source/Render/Shaders/sdl_gpu")
+  set(SDL_GPU_GENERATED_DIR "${CMAKE_BINARY_DIR}/generated/Render")
+  set(SDL_GPU_VERTEX_SPV "${SDL_GPU_GENERATED_DIR}/proof.vert.spv")
+  set(SDL_GPU_FRAGMENT_SPV "${SDL_GPU_GENERATED_DIR}/proof.frag.spv")
+  set(SDL_GPU_SHADER_HEADER "${SDL_GPU_GENERATED_DIR}/SdlGpuProofShaders.h")
+
+  add_custom_command(
+    OUTPUT "${SDL_GPU_VERTEX_SPV}" "${SDL_GPU_FRAGMENT_SPV}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${SDL_GPU_GENERATED_DIR}"
+    COMMAND "${GLSLC_EXECUTABLE}" --target-env=vulkan1.0 -fshader-stage=vert
+            "${SDL_GPU_SHADER_DIR}/proof.vert" -o "${SDL_GPU_VERTEX_SPV}"
+    COMMAND "${GLSLC_EXECUTABLE}" --target-env=vulkan1.0 -fshader-stage=frag
+            "${SDL_GPU_SHADER_DIR}/proof.frag" -o "${SDL_GPU_FRAGMENT_SPV}"
+    DEPENDS
+      "${SDL_GPU_SHADER_DIR}/proof.vert"
+      "${SDL_GPU_SHADER_DIR}/proof.frag"
+    COMMENT "Compiling SDL_GPU proof shaders to SPIR-V"
+    VERBATIM)
+
+  add_custom_command(
+    OUTPUT "${SDL_GPU_SHADER_HEADER}"
+    COMMAND "${Python3_EXECUTABLE}" "${REPO_ROOT}/tools/embed_spirv.py"
+            --vertex "${SDL_GPU_VERTEX_SPV}"
+            --fragment "${SDL_GPU_FRAGMENT_SPV}"
+            --output "${SDL_GPU_SHADER_HEADER}"
+    DEPENDS
+      "${SDL_GPU_VERTEX_SPV}"
+      "${SDL_GPU_FRAGMENT_SPV}"
+      "${REPO_ROOT}/tools/embed_spirv.py"
+    COMMENT "Embedding SDL_GPU proof SPIR-V"
+    VERBATIM)
+
+  add_custom_target(GenSdlGpuProofShaders DEPENDS "${SDL_GPU_SHADER_HEADER}")
+  add_dependencies(MuClient GenSdlGpuProofShaders)
+endif()
+
 add_custom_command(
   OUTPUT "${WIRE_SIZES_GEN_HEADER}"
   COMMAND "${Python3_EXECUTABLE}" "${WIRE_SIZES_GEN_SCRIPT}"

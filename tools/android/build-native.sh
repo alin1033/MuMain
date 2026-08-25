@@ -10,6 +10,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 output_root="${MU_ANDROID_OUTPUT_DIR:-${repo_root}/out/android}"
 abi="${MU_ANDROID_ABI:-arm64-v8a}"
+renderer_backend="${MU_RENDER_BACKEND:-OpenGL}"
 ndk_root="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
 
 if [[ -z "${ndk_root}" || ! -f "${ndk_root}/build/cmake/android.toolchain.cmake" ]]; then
@@ -21,6 +22,14 @@ case "${abi}" in
     arm64-v8a|x86_64) ;;
     *)
         echo "Unsupported MU_ANDROID_ABI='${abi}'; use arm64-v8a or x86_64." >&2
+        exit 1
+        ;;
+esac
+
+case "${renderer_backend}" in
+    OpenGL|SDL_GPU) ;;
+    *)
+        echo "Unsupported MU_RENDER_BACKEND='${renderer_backend}'; use OpenGL or SDL_GPU." >&2
         exit 1
         ;;
 esac
@@ -109,7 +118,7 @@ cmake -S "${repo_root}" -B "${main_build}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DENABLE_EDITOR=OFF \
     -DBUILD_TESTING=OFF \
-    -DMU_RENDER_BACKEND=OpenGL \
+    -DMU_RENDER_BACKEND="${renderer_backend}" \
     -DMU_ANDROID_GL4ES_ROOT="${gl4es_source}" \
     -DMU_ANDROID_GL4ES_LIBRARY="${native_output}/libGL.so" \
     -DCURL_INCLUDE_DIR="${curl_source}/include" \
@@ -129,7 +138,7 @@ cp "${main_build}/src/Release/MUnique.Client.Library.so" \
 "${strip_tool}" "${native_output}/libturbojpeg.so"
 "${strip_tool}" "${native_output}/libMUniqueClient.so"
 
-printf 'renderer=OpenGL\nabi=%s\napi=%s\n' "${abi}" "${ANDROID_API}" \
+printf 'renderer=%s\nabi=%s\napi=%s\n' "${renderer_backend}" "${abi}" "${ANDROID_API}" \
     > "${native_output}/build.properties"
 sha256sum "${native_output}"/*.so > "${native_output}/sha256sums.txt"
 

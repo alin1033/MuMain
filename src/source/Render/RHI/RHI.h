@@ -65,6 +65,11 @@ void Clear(bool color, bool depth, float r = 0, float g = 0, float b = 0, float 
 // time); kept as a real entry point for a future backend that needs to react to it.
 void OnResize(int width, int height);
 
+// AH-1308: narrow SDL_GPU/Vulkan bring-up loop. This deliberately exercises
+// only swapchain ownership, one PosUvColor pipeline, one sampled texture, and
+// presentation; the full backend contract lands in AH-1309.
+bool RunSdlGpuProof(void* nativeWindowHandle);
+
 // ---- Buffers ----
 // Static: immutable after creation. Dynamic: UpdateBuffer uses map-discard semantics
 // (orphan-then-glBufferSubData) -- IR::'s existing streaming VBO pattern and

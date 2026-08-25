@@ -1755,6 +1755,30 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int nC
         return 0;
     }
 
+#if defined(MU_RENDER_BACKEND_SDL_GPU)
+    SDL_WindowFlags gpuWindowFlags = 0;
+    if (g_bUseWindowMode != TRUE)
+        gpuWindowFlags |= SDL_WINDOW_FULLSCREEN;
+
+    g_sdlWindow = SDL_CreateWindow("MU Online — SDL_GPU Vulkan proof",
+        static_cast<int>(WindowWidth), static_cast<int>(WindowHeight), gpuWindowFlags);
+    if (!g_sdlWindow)
+    {
+        g_ErrorReport.Write(L"> SDL_CreateWindow failed for SDL_GPU: %hs.\r\n",
+            SDL_GetError());
+        MessageBox(nullptr, L"SDL_GPU window creation failed.",
+            L"MuMain Vulkan Error", MB_ICONERROR);
+        return 0;
+    }
+
+    g_ErrorReport.Write(L"> Starting SDL_GPU Vulkan textured-quad proof.\r\n");
+    const bool proofSucceeded = RHI::RunSdlGpuProof(g_sdlWindow);
+    SDL_DestroyWindow(g_sdlWindow);
+    g_sdlWindow = nullptr;
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    return proofSucceeded ? 0 : 1;
+#endif
+
     // DXP-08 Stage G: g_CoreProfile (config.ini [Render] CoreProfile, default 1 as of
     // Stage G) selects the context profile. Core became the default after the DXP-08a/
     // DXP-09 prerequisites were fixed and the debug-callback soak came back clean across
