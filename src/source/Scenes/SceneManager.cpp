@@ -685,7 +685,7 @@ static void RenderGLStats()
     using FP = FrameProfiler::Pass;
     using FC = FrameProfiler::Counter;
 
-    mu_swprintf(szLine, L"GLStats  Pass       CPUms  GPUms     GL   Draw BufUpd(Orph)");
+    mu_swprintf(szLine, L"RHIStats Pass       CPUms  GPUms     GL   Draw BufUpd(Orph) UploadKB");
     g_pRenderText->RenderText((int)x, y, szLine); y += DEBUG_TEXT_LINE_HEIGHT;
 
     // One row per GL-call-bearing pass. The passes left out are the ones that genuinely issue no
@@ -708,7 +708,9 @@ static void RenderGLStats()
         // '!' marks a GPU reading that dropped entries at kMaxEntriesPerPass -- a truncated sum
         // must never be mistaken for a complete one.
         const char* truncFlag = (gpuIdx >= 0 && FrameProfiler::GpuMsTruncated(pass)) ? "!" : " ";
-        mu_swprintf(szLine, L"%-10hs %6.2f %6.2f%hs %5u %5u %5u(%u)",
+        const float uploadedKiB =
+            (float)FrameProfiler::CounterValue(pass, FC::UploadedBytes) / 1024.0f;
+        mu_swprintf(szLine, L"%-10hs %6.2f %6.2f%hs %5u %5u %5u(%u) %8.1f",
             FrameProfiler::kPassNames[(int)pass],
             FrameProfiler::AccumulatorMs(pass),
             gpuMs,
@@ -716,17 +718,19 @@ static void RenderGLStats()
             FrameProfiler::CounterValue(pass, FC::GLCalls),
             FrameProfiler::CounterValue(pass, FC::DrawCalls),
             FrameProfiler::CounterValue(pass, FC::BufferUpdates),
-            FrameProfiler::CounterValue(pass, FC::BufferOrphans));
+            FrameProfiler::CounterValue(pass, FC::BufferOrphans),
+            uploadedKiB);
         g_pRenderText->RenderText((int)x, y, szLine); y += DEBUG_TEXT_LINE_HEIGHT;
     }
 
     // Frame totals -- includes binds/uniform writes, which aren't broken out per-row above
     // (would make the table too wide to read at a glance).
-    mu_swprintf(szLine, L"Total  GL:%u  Draw:%u  BufUpd:%u(%u)  ProgBind:%u  TexBind:%u  UniWr:%u  UboSkip:%u",
+    mu_swprintf(szLine, L"Total GL:%u Draw:%u BufUpd:%u(%u) Upload:%.1fKiB Prog:%u Tex:%u Uni:%u Skip:%u",
         FrameProfiler::CounterValue(FC::GLCalls),
         FrameProfiler::CounterValue(FC::DrawCalls),
         FrameProfiler::CounterValue(FC::BufferUpdates),
         FrameProfiler::CounterValue(FC::BufferOrphans),
+        (float)FrameProfiler::CounterValue(FC::UploadedBytes) / 1024.0f,
         FrameProfiler::CounterValue(FC::ProgramBinds),
         FrameProfiler::CounterValue(FC::TextureBinds),
         FrameProfiler::CounterValue(FC::UniformWrites),
@@ -1366,9 +1370,10 @@ void MainScene(HDC hDC)
                         g_muSplitFrames = 0;
                     }
                     __android_log_print(ANDROID_LOG_INFO, "MuMainGL",
-                        "tot gl=%u draw=%u bufUp=%u orphan=%u prog=%u tex=%u uni=%u",
+                        "tot gl=%u draw=%u bufUp=%u orphan=%u upload=%u prog=%u tex=%u uni=%u",
                         CounterValue(Counter::GLCalls), CounterValue(Counter::DrawCalls),
                         CounterValue(Counter::BufferUpdates), CounterValue(Counter::BufferOrphans),
+                        CounterValue(Counter::UploadedBytes),
                         CounterValue(Counter::ProgramBinds), CounterValue(Counter::TextureBinds),
                         CounterValue(Counter::UniformWrites));
                     for (int p = 0; p < static_cast<int>(Pass::Count_); ++p)
@@ -1377,11 +1382,12 @@ void MainScene(HDC hDC)
                         if (gl >= 200)
                         {
                             __android_log_print(ANDROID_LOG_INFO, "MuMainGL",
-                                "pass %s gl=%u draw=%u tex=%u buf=%u",
+                                "pass %s gl=%u draw=%u tex=%u buf=%u upload=%u",
                                 FrameProfiler::kPassNames[p], gl,
                                 CounterValue(static_cast<Pass>(p), Counter::DrawCalls),
                                 CounterValue(static_cast<Pass>(p), Counter::TextureBinds),
-                                CounterValue(static_cast<Pass>(p), Counter::BufferUpdates));
+                                CounterValue(static_cast<Pass>(p), Counter::BufferUpdates),
+                                CounterValue(static_cast<Pass>(p), Counter::UploadedBytes));
                         }
                     }
                     __android_log_print(ANDROID_LOG_INFO, "MuMainGL",

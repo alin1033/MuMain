@@ -92,6 +92,7 @@ namespace FrameProfiler
         GLCalls,        // every wrapped GL entry point counted below, summed
         DrawCalls,      // glDrawArrays + glDrawElements
         BufferUpdates,  // glBufferData + glBufferSubData
+        UploadedBytes,  // bytes handed to the RHI (buffers, UBOs, and RGBA texture uploads)
         BufferOrphans,  // glBufferData(.., nullptr, ..) specifically -- subset of BufferUpdates
         ProgramBinds,   // glUseProgram calls that actually reached the driver
         TextureBinds,   // glBindTexture calls that actually reached the driver

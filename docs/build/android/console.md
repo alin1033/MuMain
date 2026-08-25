@@ -59,29 +59,32 @@ The APK logs `Renderer backend = OpenGL` to `MuError.log`. Android logcat also
 identifies GL4ES and the physical GPU. Desktop and Linux builds continue to use
 OpenGL.
 
-## SDL_GPU/Vulkan proof build
+## SDL_GPU/Vulkan migration build
 
-OpenGL remains the default and rollback path. To build the AH-1308 proof instead,
-select the SDL_GPU backend explicitly:
+OpenGL remains the default and rollback path during the migration. To build the
+SDL_GPU backend explicitly:
 
 ```bash
 ANDROID_NDK_ROOT=/path/to/android-ndk-r28b \
   MU_RENDER_BACKEND=SDL_GPU tools/android/build-native.sh
 ```
 
-This configuration compiles the proof shaders to SPIR-V with the NDK `glslc`,
-embeds them in `libmain.so`, creates an SDL_GPU device with the Vulkan driver,
-and draws one textured `PosUvColor` quad. It intentionally stops before game
-startup; the full RHI contract is the next migration stage. On Android, inspect
-the selected driver and device with:
+This configuration compiles the migration shaders to SPIR-V with the NDK
+`glslc`, embeds them in `libmain.so`, and creates the SDL_GPU resource, pipeline,
+and frame contract with the Vulkan driver. Until the game shader passes are
+ported, startup runs a self-test covering the four game vertex layouts, all
+eight legacy blend modes, RGBA8 textures, uniforms, samplers, depth, viewport,
+scissor, and indexed/non-indexed draws. On Android, inspect the selected driver,
+device, and self-test result with:
 
 ```bash
 adb logcat -s MuMainGPU:I '*:S'
 ```
 
-The Galaxy Z Fold4 proof reports `backend=SDL_GPU driver=vulkan device=Adreno
-(TM) 730`. Startup failures identify the SDL_GPU stage and SDL error instead of
-falling back silently.
+The Galaxy Z Fold4 reports `backend=SDL_GPU driver=vulkan device=Adreno (TM)
+730`, followed by `full RHI self-test ready layouts=4 blends=8 indexed=1`.
+Startup failures identify the SDL_GPU stage and SDL error instead of falling
+back silently.
 
 ## Fold4 performance baseline
 
